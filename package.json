@@ -1,0 +1,22 @@
+{
+  "name": "poolpi-server",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "nodemon --ignore '*.json' ./src/main.ts"
+  },
+  "author": "Gelaechter",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^2.0.12",
+    "ts-node": "^10.1.0",
+    "typescript": "^4.3.5"
+  },
+  "dependencies": {
+    "@types/node": "^16.4.7",
+    "ds18b20": "^0.1.0",
+    "http": "^0.0.1-security",
+    "onoff": "^6.0.3",
+    "tuyapi": "github:codetheweb/tuyapi",
+    "ws": "^8.0.0"
+  }
+}
