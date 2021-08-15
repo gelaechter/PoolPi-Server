@@ -1,5 +1,4 @@
 import { writeFileSync, readFileSync, existsSync } from 'fs';
-import { isBuffer } from 'util';
 
 export namespace Data {
     // Dosage pump dosing speed
@@ -187,6 +186,16 @@ export namespace Data {
 
         public isFilterScheduled(time: Time): boolean {
             return this.isScheduled(time, this._filterTimings);
+        }
+
+        public update(poolData: PoolData){
+            this.chlorineScheduled = poolData.chlorineScheduled;
+            this.filterScheduled = poolData.filterScheduled;
+            this.heaterScheduled = poolData.heaterScheduled;
+
+            this._chlorineTimings = poolData._chlorineTimings;
+            this._filterTimings = poolData._filterTimings;
+            this._heaterTimings = poolData._heaterTimings;
         }
     }
 

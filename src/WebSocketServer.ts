@@ -1,103 +1,119 @@
 const WebSocket = require('ws');
 import { Data } from './data';
-import { Hardware } from './hardware';
 import { poolController, poolData } from './main';
 
 export class WebSocketServer {
     //All the socket connections
-    private sockets = [];
+    private sockets: WebSocket[] = [];
 
     //sets up the server and starts it
     public start() {
+
         const server = new WebSocket.Server({
-            port: 8080,
+            port: 8081,
         });
 
-        server.on('connection', function (socket) {
+        server.on('connection', (socket) => {
             this.sockets.push(socket);
 
             // When you receive a message, send that message to every socket.
-            this.socket.on('message', (msg) => this.onMessage(msg));
+            socket.on('message', (msg) => this.onMessage(msg));
 
             // When a socket closes, or disconnects, remove it from the array.
-            this.socket.on('close', function () {
+            socket.on('close', () => {
                 this.sockets = this.sockets.filter((s) => s !== socket);
             });
+
+            this.updateClients();
         });
     }
 
     //called every time the server receives a message
     private onMessage(message: string) {
-        var data: WebSocketData = Data.fromJSON(message);
-        switch (data.key) {
-            case PoolKeys.CHLORINE_ON:
-                poolController.chlorinePumpOn = data.JSON;
+        // Websocket Data always starts with a key and then the data itself
+        var jsonData = JSON.parse(JSON.parse(message as string));
+        switch (jsonData.key) {
+            case Keys.POOLDATA:
+                //  essentially: poolCommands.command(args);
+                new PoolCommands()[jsonData.command](...jsonData.args);
                 break;
-            case PoolKeys.HEATER_ON: //special case, heater must not run without heater
-                poolController.heaterOn = data.JSON;
-                if (data.JSON === true) poolController.filterOn = true;
+            case Keys.HOTTUBDATA:
                 break;
-            case PoolKeys.FILTER_ON:
-                poolController.filterOn = data.JSON;
+            case Keys.GPIO:
                 break;
-            case PoolKeys.CHLORINE_SCHEDULED:
-                poolData.chlorineScheduled = data.JSON;
-                Data.save(poolData);
-                break;
-            case PoolKeys.FILTER_SCHEDULED:
-                poolData.filterScheduled = data.JSON;
-                Data.save(poolData);
-                break;
-            case PoolKeys.HEATER_SCHEDULED:
-                poolData.heaterScheduled = data.JSON;
-                Data.save(poolData);
-                break;
-            case PoolKeys.CHLORINE_TIMINGS:
-                poolData.addChlorineTiming(data.JSON[0], data.JSON[1]);
-                Data.save(poolData);
-                break;
-            case PoolKeys.FILTER_TIMINGS:
-                poolData.addFilterTiming(data.JSON[0], data.JSON[1]);
-                Data.save(poolData);
-                break;
-            case PoolKeys.HEATER_TIMINGS:
-                poolData.addHeaterTiming(data.JSON[0], data.JSON[1]);
-                Data.save(poolData);
+            case Keys.PIN:
                 break;
         }
         poolController.refreshTimers();
+        this.updateClients();
     }
 
-    //function that updates the
-    private update() {
-        this.sockets.forEach((s) => s.send('kekw'));
+    // sends data to clients
+    private updateClients() {
+        this.sockets.forEach((s) => s.send(
+            Data.toJSON({
+                key: Keys.POOLDATA.toString(),
+                data: new PoolSocketData()
+            })
+        ));
     }
 }
 
 // Data that will be transported over the socket
-class WebSocketData {
-    public key: PoolKeys;
-    public JSON: any;
+class PoolSocketData {
+    chlorineOn: boolean;
+    filterOn: boolean;
+    heaterOn: boolean;
+
+    chlorineScheduled: boolean;
+    heaterScheduled: boolean;
+    filterScheduled: boolean;
+
+    chlorineTimings: Map<Data.Time, number>;
+    heaterTimings: Map<Data.Time, Data.Time>;
+    filterTimings: Map<Data.Time, Data.Time>;
+
+    constructor() {
+        this.chlorineOn = poolController.chlorinePumpOn;
+        this.filterOn = poolController.filterOn;
+        this.heaterOn = poolController.heaterOn;
+
+        this.chlorineScheduled = poolData.chlorineScheduled;
+        this.heaterScheduled = poolData.heaterScheduled;
+        this.filterScheduled = poolData.filterScheduled;
+
+        this.chlorineTimings = poolData.getChlorineTimings();
+        this.heaterTimings = poolData.getHeaterTimings();
+        this.filterTimings = poolData.getFilterTimings();
+    }
+
 }
 
-// an enum containing all the keys for the WebSocket communication
-enum PoolKeys {
-    CHLORINE_ON,
-    HEATER_ON,
-    FILTER_ON,
-    CHLORINE_SCHEDULED,
-    HEATER_SCHEDULED,
-    FILTER_SCHEDULED,
-    CHLORINE_TIMINGS,
-    HEATER_TIMINGS,
-    FILTER_TIMINGS,
+class HotTubSocketData { }
+
+class PoolCommands {
+    quickDose = (dose_ml: number) => poolController.chlorinateNow(dose_ml);
+    heaterOn = (on: boolean) => poolController.heaterOn = on;
+    filterOn = (on: boolean) => poolController.filterOn = on;
+
+    scheduleChlorine = (scheduled: boolean) => poolData.chlorineScheduled = scheduled;
+    scheduleHeater = (scheduled: boolean) => poolData.heaterScheduled = scheduled;
+    scheduleFilter = (scheduled: boolean) => poolData.filterScheduled = scheduled;
+
+    addChlorineTime = (start: Data.Time, dose_ml: number) => poolData.addChlorineTiming(start, dose_ml);
+    addHeaterTime = (start: Data.Time, stop: Data.Time) => poolData.addHeaterTiming(start, stop);
+    addFilterTime = (start: Data.Time, stop: Data.Time) => poolData.addFilterTiming(start, stop);
+
+    removeChlorineTime = (start: Data.Time) => poolData.removeChlorineTiming(start);
+    removeHeaterTime = (start: Data.Time) => poolData.removeHeaterTiming(start);
+    removeFilterTime = (start: Data.Time) => poolData.removeFilterTiming(start);
 }
 
-enum HotTubKeys { }
-
-enum EtcKeys {
-    ERROR,
-    LOG,
-    GPIO,
-    PIN,
+enum Keys {
+    POOLDATA = "POOLDATA",
+    HOTTUBDATA = "HOTTUBDATA",
+    ERROR = "ERROR",
+    LOG = "LOG",
+    GPIO = "GPIO",
+    PIN = "PIN",
 }

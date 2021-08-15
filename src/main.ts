@@ -17,4 +17,4 @@ export var poolController: Hardware.PoolController = new Hardware.PoolController
 export var hotTubController: Hardware.HotTubController = new Hardware.HotTubController();
 export var heatPumpController: Hardware.HeatPumpController = new Hardware.HeatPumpController();
 
-// webSocketServer.start();
+webSocketServer.start();

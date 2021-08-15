@@ -9,9 +9,11 @@ var pinConfig: Data.PinConfig = Data.load(new Data.PinConfig());
 export namespace Hardware {
     export class PoolController {
 
-        private timers: NodeJS.Timeout[];
+        // keep timers and a quickdose timer
+        private timers: NodeJS.Timeout[] = [];
         private quickDoseTimer: NodeJS.Timeout;
 
+        // GPIOs that control the devices
         private _chlorinePumpGPIO
         private _filterGPIO;
         private _heaterGPIO;
@@ -20,10 +22,15 @@ export namespace Hardware {
             // Checks if the GPIO is accessible to prevent errors
             if (Gpio.accessible) {
                 this._chlorinePumpGPIO = new Gpio(pinConfig.pool_chlorinePump, "out");
-                this._filterGPIO = new Gpio(pinConfig.pool_chlorinePump, "out");
-                this._heaterGPIO = new Gpio(pinConfig.pool_chlorinePump, "out");
+                this._filterGPIO = new Gpio(pinConfig.pool_filter, "out");
+                this._heaterGPIO = new Gpio(pinConfig.pool_heater, "out");
             } else {
                 console.error("Could not access GPIO");
+                console.log("Setting up mock GPIO")
+
+                this._chlorinePumpGPIO = new MockGPIO(pinConfig.pool_chlorinePump);
+                this._filterGPIO = new MockGPIO(pinConfig.pool_filter);
+                this._heaterGPIO = new MockGPIO(pinConfig.pool_heater);
             }
 
             // on SIGINT (Signal Interrupt / Ctrl + C) free all GPIOs resources (GPIO sysfs files)
@@ -33,11 +40,13 @@ export namespace Hardware {
                 this._heaterGPIO.unexport();
             });
 
-            setInterval(this.refreshTimers, 24 * 60 * 60 * 1000); // refresh Timers every 24 hours
+            // refresh Timers every 24 hours
+            setInterval(this.refreshTimers, 24 * 60 * 60 * 1000);
+            this.applySchedules();
         }
 
-        public chlorinateNow(dosis_ml: number) {
-            var stopTime = Data.doseToTime(dosis_ml);
+        public chlorinateNow(dose_ml: number) {
+            var stopTime = Data.doseToTime(dose_ml);
             this.chlorinePumpOn = true;
 
             // Return pump to current scheduled state
@@ -62,6 +71,7 @@ export namespace Hardware {
         }
 
         public set filterOn(on: boolean) {
+            if(!on && this.heaterOn) return;
             this._filterGPIO.writeSync(on ? 1 : 0);
         }
 
@@ -81,9 +91,7 @@ export namespace Hardware {
 
         public refreshTimers() {
             // Stop and clear out all other timers
-            for (const timeout of this.timers) {
-                clearTimeout(timeout);
-            }
+            this.timers.forEach(timer => clearTimeout(timer));
             this.timers.length = 0; //clear the timer array
 
             // Start new timers
@@ -110,15 +118,6 @@ export namespace Hardware {
                         this.chlorinePumpOn = false
                 }, stopTime.fromNow().minutes * 60 * 1000)); // Stop time in ms
             }
-
-            // adjust state for current time
-            if (!poolData.chlorineScheduled) return;
-            if (poolData.isChlorineScheduled(Data.Time.now())) {
-                this.chlorinePumpOn = true
-            } else {
-                if (this.quickDoseTimer === null)
-                    this.chlorinePumpOn = false
-            }
         }
 
         // Starts the filter timers, and toggles the filter accordingly
@@ -138,13 +137,7 @@ export namespace Hardware {
                 }, stop.fromNow().minutes * 60 * 1000)); // Stop time in ms
             }
 
-            // adjust state for current time
-            if (!poolData.filterScheduled) return;
-            if (poolData.isFilterScheduled(Data.Time.now())) {
-                this.filterOn = true;
-            } else {
-                if (!this.heaterOn) this.filterOn = false;
-            }
+
         }
 
         // Starts the filter timers, and toggles the heater accordingly
@@ -166,6 +159,18 @@ export namespace Hardware {
                 }, stop.fromNow().minutes * 60 * 1000)); // Stop time in ms
             }
 
+
+        }
+
+        applySchedules() {
+            // adjust state for current time
+            if (!poolData.chlorineScheduled) return;
+            if (poolData.isChlorineScheduled(Data.Time.now())) {
+                this.chlorinePumpOn = true
+            } else {
+                this.chlorinePumpOn = false
+            }
+
             // adjust state for current time
             if (!poolData.heaterScheduled) return;
             if (poolData.isHeaterScheduled(Data.Time.now())) {
@@ -173,6 +178,14 @@ export namespace Hardware {
                 this.heaterOn = true;
             } else {
                 this.heaterOn = false;
+            }
+
+            // adjust state for current time
+            if (!poolData.filterScheduled) return;
+            if (poolData.isFilterScheduled(Data.Time.now())) {
+                this.filterOn = true;
+            } else {
+                if (!this.heaterOn) this.filterOn = false;
             }
         }
     }
@@ -210,6 +223,28 @@ export namespace Hardware {
 
             // Disconnect after 10 seconds
             setTimeout(() => { device.disconnect(); }, 10000);
+        }
+    }
+
+    class MockGPIO {
+        on: boolean = false;
+        pin: number;
+
+        constructor(pin: number) {
+            this.pin = pin;
+        }
+
+        public writeSync(binary: number) {
+            this.on = (binary === 1);
+            console.log(`Pin ${this.pin} is now turned ${this.on ? 'on' : 'off'}`)
+        }
+
+        public readSync(): number {
+            return this.on ? 1 : 0;
+        }
+
+        public unexport() {
+            console.log(`Unexported MockGPIO on pin ${this.pin}`)
         }
     }
 }

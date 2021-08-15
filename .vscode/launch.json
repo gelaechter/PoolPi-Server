@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "type": "node-terminal",
+            "name": "Debug Nodemon",
+            "request": "launch",
+            "command": "killall node; npm start",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
