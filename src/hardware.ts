@@ -1,5 +1,5 @@
 import * as TuyAPI from 'tuyapi';
-import { poolData } from "./main";
+import { poolData, webSocketServer } from "./main";
 import { Data } from "./data";
 import { Gpio } from "onoff";
 import { tuya_secret } from "../tuya-secrets";
@@ -11,7 +11,8 @@ export namespace Hardware {
 
         // keep timers and a quickdose timer
         private timers: NodeJS.Timeout[] = [];
-        private quickDoseTimer: NodeJS.Timeout;
+        private quickDoseTimer: NodeJS.Timeout = null;
+        private quickDoseTime: Data.Time = null;
 
         // GPIOs that control the devices
         private _chlorinePumpGPIO
@@ -46,32 +47,41 @@ export namespace Hardware {
         }
 
         public chlorinateNow(dose_ml: number) {
-            var stopTime = Data.doseToTime(dose_ml);
-            this.chlorinePumpOn = true;
+            if (dose_ml < 16 || dose_ml > 23040) return;
+            var stopTime = Data.doseToTime(dose_ml).add(Data.Time.now());
+            this.quickDoseTime = stopTime;
+            this.filterOn = true;
+            this.chlorineOn = true;
 
             // Return pump to current scheduled state
             this.quickDoseTimer = (setTimeout(() => {
-                this.chlorinePumpOn = poolData.isChlorineScheduled(stopTime)
+                this.chlorineOn = poolData.isChlorineScheduled(stopTime);
+                this.filterOn = poolData.isFilterScheduled(stopTime);
                 this.quickDoseTimer = null;
+                this.quickDoseTime = null;
+                webSocketServer.updateClients();
             }, stopTime.fromNow().minutes * 60 * 1000)); // Stop time in ms
         }
 
-        public set chlorinePumpOn(on: boolean) {
+        public set chlorineOn(on: boolean) {
+            if (on && !this.filterOn) this.filterOn = true;     // Turn filter on
             this._chlorinePumpGPIO.writeSync(on ? 1 : 0);
+            if (on && !this.filterOn) this.chlorineOn = false;    //turn chlorine off if filter hasn't turned on
 
             // If the pump is turned off, cancel any Quickdose
             if (!on && this.quickDoseTimer !== null) {
                 clearTimeout(this.quickDoseTimer);
                 this.quickDoseTimer = null;
+                this.quickDoseTime = null;
             }
         }
 
-        public get chlorinePumpOn(): boolean {
+        public get chlorineOn(): boolean {
             return Boolean(this._chlorinePumpGPIO.readSync());
         }
 
         public set filterOn(on: boolean) {
-            if(!on && this.heaterOn) return;
+            if (!on && this.heaterOn) return;
             this._filterGPIO.writeSync(on ? 1 : 0);
         }
 
@@ -83,6 +93,7 @@ export namespace Hardware {
             if (on && !this.filterOn) this.filterOn = true;     // Turn filter on
             this._heaterGPIO.writeSync(on ? 1 : 0);             // send turn on signal to heater
             if (on && !this.filterOn) this.heaterOn = false;    //turn heater off if filter hasn't turned on
+
         }
 
         public get heaterOn(): boolean {
@@ -107,15 +118,20 @@ export namespace Hardware {
                 // Turn chlorine on
                 this.timers.push(setTimeout(() => {
                     if (!poolData.chlorineScheduled) return;
-                    this.chlorinePumpOn = true
+                    this.filterOn = true;
+                    this.chlorineOn = true
+                    webSocketServer.updateClients();
                 }, start.fromNow().minutes * 60 * 1000)); // Start time in ms
 
                 // Turn chlorine off if it currently isn't quickdosing
                 var stopTime = start.add(Data.doseToTime(dose_ml));
                 this.timers.push(setTimeout(() => {
                     if (!poolData.chlorineScheduled) return;
-                    if (this.quickDoseTimer === null)
-                        this.chlorinePumpOn = false
+                    if (this.quickDoseTimer === null){
+                        this.chlorineOn = false
+                        this.filterOn = poolData.isFilterScheduled(stopTime);
+                    }
+                    webSocketServer.updateClients();
                 }, stopTime.fromNow().minutes * 60 * 1000)); // Stop time in ms
             }
         }
@@ -128,12 +144,14 @@ export namespace Hardware {
                 this.timers.push(setTimeout(() => {
                     if (!poolData.filterScheduled) return;
                     this.filterOn = true;
+                    webSocketServer.updateClients();
                 }, start.fromNow().minutes * 60 * 1000)); // Start time in ms
 
                 // Turn filter off if the heater isn't on
                 this.timers.push(setTimeout(() => {
                     if (!poolData.filterScheduled) return;
-                    if (!this.heaterOn) this.filterOn = false;
+                    if (!this.heaterOn && !this.chlorineOn) this.filterOn = false;
+                    webSocketServer.updateClients();
                 }, stop.fromNow().minutes * 60 * 1000)); // Stop time in ms
             }
 
@@ -149,13 +167,15 @@ export namespace Hardware {
                     if (!poolData.heaterScheduled) return;
                     this.filterOn = true;
                     this.heaterOn = true;
+                    webSocketServer.updateClients();
                 }, start.fromNow().minutes * 60 * 1000)); // Start time in ms
 
                 // Turn heater off and filter too its scheduled state
                 this.timers.push(setTimeout(() => {
                     if (!poolData.heaterScheduled) return;
-                    this.heaterOn = false;
                     this.filterOn = poolData.isFilterScheduled(stop);
+                    this.heaterOn = false;
+                    webSocketServer.updateClients();
                 }, stop.fromNow().minutes * 60 * 1000)); // Stop time in ms
             }
 
@@ -166,9 +186,10 @@ export namespace Hardware {
             // adjust state for current time
             if (!poolData.chlorineScheduled) return;
             if (poolData.isChlorineScheduled(Data.Time.now())) {
-                this.chlorinePumpOn = true
+                this.filterOn = true;
+                this.chlorineOn = true
             } else {
-                this.chlorinePumpOn = false
+                this.chlorineOn = false
             }
 
             // adjust state for current time
@@ -185,8 +206,13 @@ export namespace Hardware {
             if (poolData.isFilterScheduled(Data.Time.now())) {
                 this.filterOn = true;
             } else {
-                if (!this.heaterOn) this.filterOn = false;
+                if (!this.heaterOn && !this.chlorineOn) this.filterOn = false;
             }
+            webSocketServer.updateClients();
+        }
+
+        getQuickDoseTime() {
+            return this.quickDoseTime;
         }
     }
 

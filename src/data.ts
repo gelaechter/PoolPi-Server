@@ -24,9 +24,9 @@ export namespace Data {
         }
 
         public get text() {
-            var hours = this.time / 60;
-            var minutes = this.time % 60;
-            return hours + ':' + minutes;
+            var hours = Math.floor(this.minutes / 60);
+            var minutes = this.minutes % 60;
+            return String(hours).padStart(2, "0") + ':' + String(minutes).padStart(2, "0")
         }
 
         public set minutes(minutes: number) {
@@ -51,9 +51,9 @@ export namespace Data {
         }
 
         public subtract(time: Time): Time {
-            var time: Time = new Time(this.minutes - time.minutes);
-            if (time.minutes < 0) time = new Time(1440 - time.minutes);
-            return time;
+            var minutes: number = this.minutes - time.minutes;
+            if (minutes < 0) minutes = 1440 - time.minutes;
+            return new Time(minutes);
         }
 
         public fromNow(): Time {
@@ -94,6 +94,7 @@ export namespace Data {
         private _chlorineTimings: Map<Time, number> = new Map(); // Start time and dose; dose here measured in millilitres
         private _heaterTimings: Map<Time, Time> = new Map();
         private _filterTimings: Map<Time, Time> = new Map();
+        public doses: number[] = [0, 0, 0];
 
         public getChlorineTimings(): Map<Time, number> {
             return this._chlorineTimings;
@@ -187,16 +188,6 @@ export namespace Data {
         public isFilterScheduled(time: Time): boolean {
             return this.isScheduled(time, this._filterTimings);
         }
-
-        public update(poolData: PoolData){
-            this.chlorineScheduled = poolData.chlorineScheduled;
-            this.filterScheduled = poolData.filterScheduled;
-            this.heaterScheduled = poolData.heaterScheduled;
-
-            this._chlorineTimings = poolData._chlorineTimings;
-            this._filterTimings = poolData._filterTimings;
-            this._heaterTimings = poolData._heaterTimings;
-        }
     }
 
     export class HotTubData { }
@@ -229,8 +220,11 @@ export namespace Data {
     export function doseToTime(dosis_ml: number): Time {
         var ml_per_hour = litres_per_hour * 1000;
         var ml_per_minute = ml_per_hour / 60; // At the rate of 0.96 L/h this should be 16 mL/min
+        var minutes = dosis_ml / ml_per_minute;
 
-        return new Time(dosis_ml / ml_per_minute);
+        if (minutes > 1440)
+            return new Time(1440)
+        return new Time(minutes);
     }
 
     export function toJSON(object: any): string {

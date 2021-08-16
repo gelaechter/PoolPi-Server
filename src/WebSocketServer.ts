@@ -35,6 +35,7 @@ export class WebSocketServer {
         switch (jsonData.key) {
             case Keys.POOLDATA:
                 //  essentially: poolCommands.command(args);
+                console.log("Received websocket data:" , jsonData);
                 new PoolCommands()[jsonData.command](...jsonData.args);
                 break;
             case Keys.HOTTUBDATA:
@@ -44,12 +45,13 @@ export class WebSocketServer {
             case Keys.PIN:
                 break;
         }
+        Data.save(poolData);
         poolController.refreshTimers();
         this.updateClients();
     }
 
     // sends data to clients
-    private updateClients() {
+    public updateClients() {
         this.sockets.forEach((s) => s.send(
             Data.toJSON({
                 key: Keys.POOLDATA.toString(),
@@ -73,8 +75,11 @@ class PoolSocketData {
     heaterTimings: Map<Data.Time, Data.Time>;
     filterTimings: Map<Data.Time, Data.Time>;
 
+    quickDoseTime: Data.Time;
+    doses: number[]
+
     constructor() {
-        this.chlorineOn = poolController.chlorinePumpOn;
+        this.chlorineOn = poolController.chlorineOn;
         this.filterOn = poolController.filterOn;
         this.heaterOn = poolController.heaterOn;
 
@@ -85,6 +90,9 @@ class PoolSocketData {
         this.chlorineTimings = poolData.getChlorineTimings();
         this.heaterTimings = poolData.getHeaterTimings();
         this.filterTimings = poolData.getFilterTimings();
+
+        this.quickDoseTime = poolController.getQuickDoseTime();
+        this.doses = poolData.doses;
     }
 
 }
@@ -92,9 +100,9 @@ class PoolSocketData {
 class HotTubSocketData { }
 
 class PoolCommands {
-    quickDose = (dose_ml: number) => poolController.chlorinateNow(dose_ml);
     heaterOn = (on: boolean) => poolController.heaterOn = on;
     filterOn = (on: boolean) => poolController.filterOn = on;
+    chlorineOn = (on: boolean) => poolController.chlorineOn = on;
 
     scheduleChlorine = (scheduled: boolean) => poolData.chlorineScheduled = scheduled;
     scheduleHeater = (scheduled: boolean) => poolData.heaterScheduled = scheduled;
@@ -107,6 +115,9 @@ class PoolCommands {
     removeChlorineTime = (start: Data.Time) => poolData.removeChlorineTiming(start);
     removeHeaterTime = (start: Data.Time) => poolData.removeHeaterTiming(start);
     removeFilterTime = (start: Data.Time) => poolData.removeFilterTiming(start);
+
+    quickDose = (dose_ml: number) => poolController.chlorinateNow(dose_ml);
+    changeDoses = (doses: number[]) => poolData.doses = doses;
 }
 
 enum Keys {
