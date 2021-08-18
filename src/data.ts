@@ -188,6 +188,18 @@ export namespace Data {
         public isFilterScheduled(time: Time): boolean {
             return this.isScheduled(time, this._filterTimings);
         }
+
+        public save() {
+            return JSON.stringify(this, replacer);
+        }
+
+        public static load(): PoolData {
+            if (existsSync(this.constructor.name + '.json')) {
+                var data = readFileSync(this.constructor.name + '.json');
+                return Object.assign(new PoolData(), JSON.parse(data.toString(), reviver));
+            }
+            return new PoolData;
+        }
     }
 
     export class HotTubData { }
@@ -264,6 +276,11 @@ export namespace Data {
                 dataType: 'Map',
                 value: Array.from(value.entries()), // or with spread: value: [...value]
             };
+        } else if (value instanceof Time) {
+            return {
+                dataType: 'Time',
+                minutes: value.minutes,
+            };
         } else {
             return value;
         }
@@ -274,6 +291,8 @@ export namespace Data {
         if (typeof value === 'object' && value !== null) {
             if (value.dataType === 'Map') {
                 return new Map(value.value);
+            } else if (value.dataType === 'Time') {
+                return new Time(value.minutes);
             }
         }
         return value;

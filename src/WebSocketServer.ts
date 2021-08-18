@@ -31,7 +31,8 @@ export class WebSocketServer {
     //called every time the server receives a message
     private onMessage(message: string) {
         // Websocket Data always starts with a key and then the data itself
-        var jsonData = JSON.parse(JSON.parse(message as string));
+        console.log("Data:", JSON.parse(message));
+        var jsonData = JSON.parse(message as string);
         switch (jsonData.key) {
             case Keys.POOLDATA:
                 //  essentially: poolCommands.command(args);
@@ -45,7 +46,7 @@ export class WebSocketServer {
             case Keys.PIN:
                 break;
         }
-        Data.save(poolData);
+        poolData.save();
         poolController.refreshTimers();
         this.updateClients();
     }

@@ -5,7 +5,8 @@ import { Hardware } from "./hardware";
 
 //Data structures
 export var pinConfig: Data.PinConfig = Data.load(new Data.PinConfig());
-export var poolData: Data.PoolData = Data.load(new Data.PoolData());
+export var poolData: Data.PoolData = Data.PoolData.load();
+poolData.addFilterTiming(new Data.Time("22:00"), new Data.Time("05:00"))
 export var hotTubData: Data.HotTubData = Data.load(new Data.HotTubData());
 
 //Servers

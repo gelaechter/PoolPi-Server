@@ -39,6 +39,8 @@ export namespace Hardware {
                 this._chlorinePumpGPIO.unexport();
                 this._filterGPIO.unexport();
                 this._heaterGPIO.unexport();
+
+                process.kill(process.pid, 'SIGTERM')
             });
 
             // refresh Timers every 24 hours
@@ -67,6 +69,7 @@ export namespace Hardware {
             if (on && !this.filterOn) this.filterOn = true;     // Turn filter on
             this._chlorinePumpGPIO.writeSync(on ? 1 : 0);
             if (on && !this.filterOn) this.chlorineOn = false;    //turn chlorine off if filter hasn't turned on
+
 
             // If the pump is turned off, cancel any Quickdose
             if (!on && this.quickDoseTimer !== null) {
