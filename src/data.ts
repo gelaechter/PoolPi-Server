@@ -1,4 +1,5 @@
 import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { poolController } from './main';
 
 export namespace Data {
     // Dosage pump dosing speed
@@ -45,9 +46,9 @@ export namespace Data {
 
         // adds this Time to another
         public add(time: Time): Time {
-            var time: Time = new Time(this.minutes + time.minutes);
-            if (time.minutes > 1440) time = new Time(time.minutes - 1440);
-            return time;
+            var minutes: number = this.minutes + time.minutes;
+            if (minutes > 1440) minutes = minutes - 1440;
+            return new Time(minutes);
         }
 
         public subtract(time: Time): Time {
@@ -62,6 +63,20 @@ export namespace Data {
 
         public static now(): Time {
             return new Time(new Date());
+        }
+
+        public millisTill(): number {
+            var now = new Date();
+            var millis = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Math.floor(this.minutes / 60), this.minutes % 60, 0, 0).getTime() - now.getTime();
+            if (millis < 0) {
+                millis += 86400000; // it's after 10am, try 10am tomorrow.
+           }
+           return millis;
+        }
+
+        // create a key for this Time so that a Map can compare them;
+        get key(): number {
+            return this.time;
         }
     }
 
@@ -90,49 +105,57 @@ export namespace Data {
         public heaterScheduled: boolean = true;
         public filterScheduled: boolean = true;
 
-        // Timing Maps consisting of the start time and the stop time
-        private _chlorineTimings: Map<Time, number> = new Map(); // Start time and dose; dose here measured in millilitres
-        private _heaterTimings: Map<Time, Time> = new Map();
-        private _filterTimings: Map<Time, Time> = new Map();
+        // Using numbers in place of Time because javascript Maps compare objects, like Time, based on reference
+        private _chlorineTimings: Map<number, number> = new Map<number, number>(); // Start time and dose; dose here measured in millilitres
+        private _heaterTimings: Map<number, number> = new Map<number, number>();
+        private _filterTimings: Map<number, number> = new Map<number, number>();
         public doses: number[] = [0, 0, 0];
 
+        constructor() { }
+
         public getChlorineTimings(): Map<Time, number> {
-            return this._chlorineTimings;
+            // Map<number, number> --Array.from--> Array[[K, V]...] --Array.map--> ([K, V])=>([Time, V]) --new Map(iterable)--> Map<Time, number>
+            return new Map<Time, number>(Array.from(this._chlorineTimings).map(([key, value]) => ([new Time(key), value])));
         }
 
         public getHeaterTimings(): Map<Time, Time> {
-            return this._heaterTimings;
+            // Map<number, number> --Array.from--> Array[[K, V]...] --Array.map--> ([K, V])=>([Time, Time]) --new Map(iterable)--> Map<Time, Time>
+            return new Map<Time, Time>(Array.from(this._heaterTimings).map(([key, value]) => ([new Time(key), new Time(value)])));
         }
 
         public getFilterTimings(): Map<Time, Time> {
-            return this._filterTimings;
+            // Map<number, number> --Array.from--> Array[[K, V]...] --Array.map--> ([K, V])=>([Time, Time]) --new Map(iterable)--> Map<Time, Time>
+            return new Map<Time, Time>(Array.from(this._filterTimings).map(([key, value]) => ([new Time(key), new Time(value)])));
         }
 
         // adds start and stop to a map if they are outside all other ranges
-        private addTiming(start: Time, stop: Time, map: Map<Time, Time>) {
-            if (map.has(start)) return; // If a timing starting with this already exists deny
+        private addTiming(start: Time, stop: Time, map: Map<number, number>) {
+            if (map.has(start.key)) return; // If a timing starting with this already exists deny
             if (map.size < 1) {
                 // If empty just add it
-                map.set(start, stop);
+                map.set(start.key, stop.key);
             } else {
                 // Else check if the new time frame is outside of other timeframes
                 if (this.isScheduled(start, map)) return;
                 if (this.isScheduled(stop, map)) return;
-                map.set(start, stop);
+                map.set(start.key, stop.key);
             }
         }
 
         // Practically the same as addTiming() but converts dosis_ml to a Time
         public addChlorineTiming(start: Time, dosis_ml: number) {
-            if (this._chlorineTimings.has(start)) return; // If a timing starting with this already exists deny
+            if (this._chlorineTimings.has(start.key)) return; // If a timing starting with this time already exists deny
+            if (dosis_ml < 16) return;
+
+            // If the scheduler is empty just add it
             if (this._chlorineTimings.size < 1) {
-                // If empty just add it
-                this._chlorineTimings.set(start, dosis_ml);
+                this._chlorineTimings.set(start.key, dosis_ml);
+
             } else {
                 // Else check if it is outside of other time frames; Stop time has to be calculated to check against
                 if (this.isChlorineScheduled(start)) return;
                 if (this.isChlorineScheduled(start.add(doseToTime(dosis_ml)))) return;
-                this._chlorineTimings.set(start, dosis_ml);
+                this._chlorineTimings.set(start.key, dosis_ml);
             }
         }
 
@@ -145,15 +168,20 @@ export namespace Data {
         }
 
         public removeChlorineTiming(start: Time) {
-            this._chlorineTimings.delete(start);
+            if (start === null || start === undefined) return;
+            this._chlorineTimings.delete(start.key);
+
+            poolController.refreshTimers();
         }
 
         public removeHeaterTiming(start: Time) {
-            this._heaterTimings.delete(start);
+            if (start === null || start === undefined) return;
+            this._heaterTimings.delete(start.key);
         }
 
         public removeFilterTiming(start: Time) {
-            this._filterTimings.delete(start);
+            if (start === null || start === undefined) return;
+            this._filterTimings.delete(start.key);
         }
 
         /**
@@ -164,15 +192,15 @@ export namespace Data {
          * @param  {Map<Time, Time>} timings The timing map to check against
          * @return {boolean} True if time is contained in a timing map, false if not
          */
-        private isScheduled(time: Time, timings: Map<Time, Time>) {
+        private isScheduled(time: Time, timings: Map<number, number>) {
             for (const [startTime, stopTime] of timings.entries()) {
-                if (isInTimeframe(time, startTime, stopTime)) return true;
+                if (isInTimeframe(time, new Time(startTime), new Time(stopTime))) return true;
             }
             return false;
         }
 
         public isChlorineScheduled(time: Time): boolean {
-            for (const [startTime, dosis] of this._chlorineTimings.entries()) {
+            for (const [startTime, dosis] of this.getChlorineTimings().entries()) {
                 // stop Time calculated from dosis using helper function
                 var stopTime: Time = startTime.add(doseToTime(dosis));
                 if (isInTimeframe(time, startTime, stopTime)) return true;
@@ -189,16 +217,12 @@ export namespace Data {
             return this.isScheduled(time, this._filterTimings);
         }
 
-        public save() {
-            return JSON.stringify(this, replacer);
-        }
-
         public static load(): PoolData {
-            if (existsSync(this.constructor.name + '.json')) {
-                var data = readFileSync(this.constructor.name + '.json');
+            if (existsSync('PoolData.json')) {
+                var data = readFileSync('PoolData.json');
                 return Object.assign(new PoolData(), JSON.parse(data.toString(), reviver));
             }
-            return new PoolData;
+            return new PoolData();
         }
     }
 
@@ -239,7 +263,7 @@ export namespace Data {
         return new Time(minutes);
     }
 
-    export function toJSON(object: any): string {
+    export function toJSON(object: unknown): string {
         return JSON.stringify(object, replacer);
     }
 
@@ -274,7 +298,7 @@ export namespace Data {
         if (value instanceof Map) {
             return {
                 dataType: 'Map',
-                value: Array.from(value.entries()), // or with spread: value: [...value]
+                value: Array.from((value as Map<any, any>).entries()), // or with spread: value: [...value]
             };
         } else if (value instanceof Time) {
             return {

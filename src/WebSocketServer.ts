@@ -31,13 +31,16 @@ export class WebSocketServer {
     //called every time the server receives a message
     private onMessage(message: string) {
         // Websocket Data always starts with a key and then the data itself
-        console.log("Data:", JSON.parse(message));
-        var jsonData = JSON.parse(message as string);
+        var jsonData = Data.fromJSON(message as string);
         switch (jsonData.key) {
             case Keys.POOLDATA:
                 //  essentially: poolCommands.command(args);
-                console.log("Received websocket data:" , jsonData);
+                console.log("Received websocket data:", jsonData);
                 new PoolCommands()[jsonData.command](...jsonData.args);
+                if(jsonData.command.includes("Time")){
+                    poolController.refreshTimers();
+                    poolController.applySchedules();
+                }
                 break;
             case Keys.HOTTUBDATA:
                 break;
@@ -46,19 +49,22 @@ export class WebSocketServer {
             case Keys.PIN:
                 break;
         }
-        poolData.save();
+        Data.save(poolData);
         poolController.refreshTimers();
         this.updateClients();
     }
 
     // sends data to clients
     public updateClients() {
-        this.sockets.forEach((s) => s.send(
-            Data.toJSON({
+        this.sockets.forEach((s) => {
+            var data = {
                 key: Keys.POOLDATA.toString(),
                 data: new PoolSocketData()
-            })
-        ));
+            }
+
+            s.send(Data.toJSON(data));
+        });
+
     }
 }
 
@@ -95,8 +101,9 @@ class PoolSocketData {
         this.quickDoseTime = poolController.getQuickDoseTime();
         this.doses = poolData.doses;
     }
-
 }
+
+
 
 class HotTubSocketData { }
 

@@ -1,1 +1,1 @@
-{"chlorineScheduled":true,"heaterScheduled":true,"filterScheduled":true,"_chlorineTimings":{"dataType":"Map","value":[]},"_heaterTimings":{"dataType":"Map","value":[]},"_filterTimings":{"dataType":"Map","value":[]},"doses":[16,0,0]}
+{"chlorineScheduled":true,"heaterScheduled":true,"filterScheduled":true,"_chlorineTimings":{"dataType":"Map","value":[]},"_heaterTimings":{"dataType":"Map","value":[]},"_filterTimings":{"dataType":"Map","value":[]},"doses":[100,500,1001]}

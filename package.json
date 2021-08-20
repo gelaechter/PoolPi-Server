@@ -15,6 +15,7 @@
     "@types/node": "^16.4.7",
     "ds18b20": "^0.1.0",
     "http": "^0.0.1-security",
+    "immutable": "^4.0.0-rc.14",
     "onoff": "^6.0.3",
     "tuyapi": "github:codetheweb/tuyapi",
     "ws": "^8.0.0"
