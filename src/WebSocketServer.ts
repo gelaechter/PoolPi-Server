@@ -1,6 +1,8 @@
 const WebSocket = require('ws');
-import { Data } from './data';
-import { poolController, poolData } from './main';
+import { config } from 'process';
+import * as Data from './data';
+import { PoolData } from './data';
+import { poolController, poolData, configData } from './main';
 
 export class WebSocketServer {
     //All the socket connections
@@ -32,85 +34,85 @@ export class WebSocketServer {
     private onMessage(message: string) {
         // Websocket Data always starts with a key and then the data itself
         var jsonData = Data.fromJSON(message as string);
+        console.log("Received websocket data:", jsonData);
+
         switch (jsonData.key) {
+
             case Keys.POOLDATA:
                 //  essentially: poolCommands.command(args);
-                console.log("Received websocket data:", jsonData);
                 new PoolCommands()[jsonData.command](...jsonData.args);
-                if(jsonData.command.includes("Time")){
+                if (jsonData.command.includes("Time")) {
                     poolController.refreshTimers();
                     poolController.applySchedules();
                 }
+                poolData.save();
+                poolController.refreshTimers();
                 break;
-            case Keys.HOTTUBDATA:
-                break;
-            case Keys.GPIO:
-                break;
-            case Keys.PIN:
+
+            case Keys.CONFIGDATA:
+                new ConfigCommands()[jsonData.command](...jsonData.args);
+                configData.save();
                 break;
         }
-        Data.save(poolData);
-        poolController.refreshTimers();
+
         this.updateClients();
     }
 
     // sends data to clients
     public updateClients() {
         this.sockets.forEach((s) => {
-            var data = {
+            // Config Data
+            var configData = {
+                key: Keys.CONFIGDATA.toString(),
+                data: new ConfigSocketData()
+            }
+            s.send(Data.toJSON(configData));
+
+            // Pool Data
+            var poolData = {
                 key: Keys.POOLDATA.toString(),
                 data: new PoolSocketData()
             }
-
-            s.send(Data.toJSON(data));
+            s.send(Data.toJSON(poolData));
         });
 
     }
 }
 
-// Data that will be transported over the socket
-class PoolSocketData {
-    chlorineOn: boolean;
-    filterOn: boolean;
-    heaterOn: boolean;
 
-    chlorineScheduled: boolean;
-    heaterScheduled: boolean;
-    filterScheduled: boolean;
-
-    chlorineTimings: Map<Data.Time, number>;
-    heaterTimings: Map<Data.Time, Data.Time>;
-    filterTimings: Map<Data.Time, Data.Time>;
-
-    quickDoseTime: Data.Time;
-    doses: number[]
-
-    constructor() {
-        this.chlorineOn = poolController.chlorineOn;
-        this.filterOn = poolController.filterOn;
-        this.heaterOn = poolController.heaterOn;
-
-        this.chlorineScheduled = poolData.chlorineScheduled;
-        this.heaterScheduled = poolData.heaterScheduled;
-        this.filterScheduled = poolData.filterScheduled;
-
-        this.chlorineTimings = poolData.getChlorineTimings();
-        this.heaterTimings = poolData.getHeaterTimings();
-        this.filterTimings = poolData.getFilterTimings();
-
-        this.quickDoseTime = poolController.getQuickDoseTime();
-        this.doses = poolData.doses;
-    }
+enum Keys {
+    POOLDATA = "POOLDATA",
+    CONFIGDATA = "CONFIGDATA",
+    LOG = "LOG"
 }
 
+// Data that will be transported over the socket
+class PoolSocketData {
+    chlorineOn: boolean = poolController.chlorineOn;
+    filterOn: boolean = poolController.filterOn;
+    heaterOn: boolean = poolController.heaterOn;
 
+    goalTemperature: number = poolData.goalTemperature;
 
-class HotTubSocketData { }
+    chlorineScheduled: boolean = poolData.chlorineScheduled;
+    heaterScheduled: boolean = poolData.heaterScheduled;
+    filterScheduled: boolean = poolData.filterScheduled;
 
+    chlorineTimings: Map<Data.Time, number> = poolData.getChlorineTimings();
+    heaterTimings: Map<Data.Time, Data.Time> = poolData.getHeaterTimings();
+    filterTimings: Map<Data.Time, Data.Time> = poolData.getFilterTimings();
+
+    quickDoseTime: Data.Time = poolController.getQuickDoseTime();
+    doses: number[] = poolData.doses;
+}
+
+// Commands that can be execute from the clientside
 class PoolCommands {
     heaterOn = (on: boolean) => poolController.heaterOn = on;
     filterOn = (on: boolean) => poolController.filterOn = on;
     chlorineOn = (on: boolean) => poolController.chlorineOn = on;
+
+    setGoalTemp = (temp: number) => poolData.goalTemperature = temp;
 
     scheduleChlorine = (scheduled: boolean) => poolData.chlorineScheduled = scheduled;
     scheduleHeater = (scheduled: boolean) => poolData.heaterScheduled = scheduled;
@@ -128,11 +130,39 @@ class PoolCommands {
     changeDoses = (doses: number[]) => poolData.doses = doses;
 }
 
-enum Keys {
-    POOLDATA = "POOLDATA",
-    HOTTUBDATA = "HOTTUBDATA",
-    ERROR = "ERROR",
-    LOG = "LOG",
-    GPIO = "GPIO",
-    PIN = "PIN",
+class ConfigSocketData {
+    poolMode: boolean = configData.poolMode;;
+
+    gPoolChlorinePump: number = configData.gPoolChlorinePump;
+    gPoolFilter: number = configData.gPoolFilter;
+    gPoolHeater: number = configData.gPoolHeater;
+    gHotTubHeater_Pump: number = configData.gHotTubHeaterPump;
+    gHotTubFilter_UV: number = configData.gHotTubFilter_UV;
+    gHotTubChlorinePump: number = configData.gHotTubChlorinePump;
+    gTempSensors: number = configData.gTempSensors;
+
+    sensorPollRate: number = configData.sensorPollRate;
+    public sensorIds: { waterId: string, cabinId: string, barrelId: string }
+        = configData.sensorIds;
 }
+
+class ConfigCommands {
+    switchMode = () => {
+        poolData.save()
+        configData.poolMode = !configData.poolMode;
+        poolData.load();
+
+        poolController.updateGPIO();
+        poolController.refreshTimers();
+        poolController.applySchedules();
+    };
+
+    gPoolChlorinePump = (pin: number) => configData.gPoolChlorinePump = pin;
+    gPoolFilter = (pin: number) => configData.gPoolFilter = pin;
+    gPoolHeater = (pin: number) => configData.gPoolHeater = pin;
+    gHotTubHeater_Pump = (pin: number) => configData.gHotTubHeaterPump = pin;
+    gHotTubFilter_UV = (pin: number) => configData.gHotTubFilter_UV = pin;
+    gHotTubChlorinePump = (pin: number) => configData.gHotTubChlorinePump = pin;
+    gTempSensors = (pin: number) => configData.gTempSensors = pin;
+}
+

@@ -7,7 +7,13 @@
   "author": "Gelaechter",
   "license": "MIT",
   "devDependencies": {
+    "@types/ds18b20": "^0.1.0",
+    "@typescript-eslint/eslint-plugin": "^5.10.0",
+    "@typescript-eslint/parser": "^5.10.0",
+    "eslint": "^8.7.0",
+    "eslint-plugin-prettier": "^4.0.0",
     "nodemon": "^2.0.12",
+    "prettier": "2.5.1",
     "ts-node": "^10.1.0",
     "typescript": "^4.3.5"
   },
@@ -17,7 +23,7 @@
     "http": "^0.0.1-security",
     "immutable": "^4.0.0-rc.14",
     "onoff": "^6.0.3",
-    "tuyapi": "github:codetheweb/tuyapi",
+    "tuyapi": "codetheweb/tuyapi",
     "ws": "^8.0.0"
   }
 }

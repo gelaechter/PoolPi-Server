@@ -1,20 +1,16 @@
-import { Data } from './data';
-import { WebServer } from './WebServer';
-import { WebSocketServer } from './WebSocketServer';
-import { Hardware } from "./hardware";
+import * as Data from "./data";
+import { WebSocketServer } from "./WebSocketServer";
+import * as Hardware from "./hardware";
 
-//Data structures
-export var pinConfig: Data.PinConfig = Data.load(new Data.PinConfig());
-export var poolData: Data.PoolData = Data.PoolData.load();
-export var hotTubData: Data.HotTubData = Data.load(new Data.HotTubData());
+// Data structures
+export const configData: Data.ConfigData = Data.ConfigData.load();
+export let poolData: Data.PoolData = Data.PoolData.load();
 
-//Servers
-export var webSocketServer: WebSocketServer = new WebSocketServer();
-export var webServer: WebServer = new WebServer();
+// Websockett Server
+export const webSocketServer: WebSocketServer = new WebSocketServer();
 
-//Hardware controllers
-export var poolController: Hardware.PoolController = new Hardware.PoolController();
-export var hotTubController: Hardware.HotTubController = new Hardware.HotTubController();
-export var heatPumpController: Hardware.HeatPumpController = new Hardware.HeatPumpController();
+// Hardware controllers
+export const poolController: Hardware.PoolController = new Hardware.PoolController();
+export const heatPumpController: Hardware.HeatPumpController = new Hardware.HeatPumpController();
 
 webSocketServer.start();

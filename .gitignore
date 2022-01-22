@@ -124,4 +124,6 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/node
 
 tuya-secrets.ts
-PinConfig.json
+ConfigData.json
+HotTubData.json
+PoolData.json
